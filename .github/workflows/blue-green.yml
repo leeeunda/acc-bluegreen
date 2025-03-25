@@ -35,7 +35,7 @@ jobs:
       # 4. Docker 이미지 빌드, 태그, 푸시
       - name: Build, tag, and push Docker image to ECR
         run: |
-          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          IMAGE_URI="058264092003.dkr.ecr.ap-northeast-2.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
           echo "Building Docker image: $IMAGE_URI"
           docker build -t $IMAGE_URI .
           echo "Pushing Docker image to ECR..."
@@ -56,13 +56,13 @@ jobs:
             export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             export AWS_REGION=${{ env.AWS_REGION }}
 
-            IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+            IMAGE_URI="058264092003.dkr.ecr.ap-northeast-2.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
 
             echo "Deploying new version: $IMAGE_URI"
 
             # EC2에서 AWS ECR 다시 로그인 (인증 문제 방지)
             echo "Logging in to ECR from EC2..."
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $IMAGE_URI
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 058264092003.dkr.ecr.ap-northeast-2.amazonaws.com
 
             # 현재 활성 버전 확인 (blue or green)
             CURRENT_VERSION=$(docker ps --format '{{.Names}}' | grep fastapi- | grep -o 'blue\|green' || echo "none")
