@@ -15,9 +15,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. 코드 체크아웃
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 2. AWS 자격 증명 구성
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -25,16 +27,21 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # 3. Amazon ECR 로그인
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
+      # 4. Docker 이미지 빌드, 태그, 푸시
       - name: Build, tag, and push Docker image to ECR
         run: |
           IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          echo "Building Docker image: $IMAGE_URI"
           docker build -t $IMAGE_URI .
+          echo "Pushing Docker image to ECR..."
           docker push $IMAGE_URI
 
+      # 5. EC2에 배포 및 Nginx 스위칭
       - name: Deploy to EC2 and switch Nginx
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -46,11 +53,14 @@ jobs:
 
             IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
 
-            # 로그인
+            echo "Deploying new version: $IMAGE_URI"
+
+            # EC2에서 AWS ECR 다시 로그인 (인증 문제 방지)
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
 
             # 현재 활성 버전 확인 (blue or green)
             CURRENT_VERSION=$(docker ps --format '{{.Names}}' | grep fastapi- | grep -o 'blue\|green' || echo "none")
+            echo "Current active version: $CURRENT_VERSION"
 
             if [ "$CURRENT_VERSION" == "blue" ]; then
               NEXT_VERSION="green"
@@ -62,22 +72,31 @@ jobs:
               COMPOSE_FILE="docker-compose.blue.yml"
             fi
 
-            # Pull 이미지
+            echo "Next version to deploy: $NEXT_VERSION (Port: $PORT)"
+
+            # 최신 이미지 Pull
             docker pull $IMAGE_URI
 
             # 최신 docker-compose 파일로 실행
-            cd ~/app  # EC2에 app이 clone 되어 있다고 가정
+            cd ~/app
             docker-compose -f $COMPOSE_FILE up -d --force-recreate
 
-            # health check (간단한 버전)
+            # Health check (간단한 버전)
+            echo "Performing health check on http://localhost:$PORT/"
             sleep 5
-            curl --fail http://localhost:$PORT/ || (echo "Health check failed!" && exit 1)
+            if ! curl --fail http://localhost:$PORT/; then
+              echo "Health check failed for $NEXT_VERSION!"
+              exit 1
+            fi
+            echo "Health check succeeded!"
 
             # nginx 설정 스위치
+            echo "Switching Nginx to $NEXT_VERSION"
             ./switch_version.sh $NEXT_VERSION
 
             # 이전 버전 종료
             if [ "$CURRENT_VERSION" != "none" ]; then
+              echo "Stopping previous version: $CURRENT_VERSION"
               docker stop fastapi-$CURRENT_VERSION
               docker rm fastapi-$CURRENT_VERSION
             fi
