@@ -27,7 +27,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3. Amazon ECR 로그인
+      # 3. Amazon ECR 로그인 (이미지 푸시/풀 전 로그인)
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
@@ -62,7 +62,7 @@ jobs:
 
             # EC2에서 AWS ECR 다시 로그인 (인증 문제 방지)
             echo "Logging in to ECR from EC2..."
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 058264092003.dkr.ecr.ap-northeast-2.amazonaws.com
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $IMAGE_URI
 
             # 현재 활성 버전 확인 (blue or green)
             CURRENT_VERSION=$(docker ps --format '{{.Names}}' | grep fastapi- | grep -o 'blue\|green' || echo "none")
